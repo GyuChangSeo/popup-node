@@ -1,0 +1,11 @@
+node_modules
+.next
+data/*.json
+data/*.html
+data/roster.key
+data/roster.url
+.env
+.env*.local
+tsconfig.tsbuildinfo
+.vercel
+.env*
