@@ -158,7 +158,19 @@ function projectPoint(
   return { x: x1, y: y2, z: z2 };
 }
 
-export function WordSphere({ imagines }: { imagines: string[] }) {
+export function WordSphere({
+  imagines,
+  running = true,
+}: {
+  imagines: string[];
+  running?: boolean;
+}) {
+  const runningRef = useRef(running);
+  runningRef.current = running;
+  const kickRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (running) kickRef.current?.();
+  }, [running]);
   const base = useMemo(() => basePlace(sphereWords(imagines)), [imagines]);
   // POC 촘촘함 — 표면 먼지점 늘림. 곡선/플라즈마 없음
   const dust = useMemo(() => makeDust(Math.max(140, Math.floor(base.length * 2.8))), [base.length]);
@@ -269,7 +281,20 @@ export function WordSphere({ imagines }: { imagines: string[] }) {
     root.addEventListener("pointerup", onUp);
     root.addEventListener("pointercancel", onUp);
 
+    for (const el of wordEls) {
+      el.style.left = "0";
+      el.style.top = "0";
+    }
+    for (const el of dustEls) {
+      el.style.left = "0";
+      el.style.top = "0";
+      el.style.width = "2px";
+      el.style.height = "2px";
+    }
+
     const tick = (now: number) => {
+      raf = 0;
+      if (!runningRef.current) return;
       const dt = Math.min(48, now - last);
       last = now;
       // 드래그 중이 아니면 현재 각도에서 Y축 자동 회전만 이어감
@@ -314,13 +339,21 @@ export function WordSphere({ imagines }: { imagines: string[] }) {
         ...projDust.map((p) => ({ left: p.left, top: p.top, depth: p.depth })),
       ];
 
+      const w = root.clientWidth || 1;
+      const h = root.clientHeight || 1;
+
       for (let i = 0; i < wordEls.length; i++) {
         const el = wordEls[i];
         const p = projWords[i];
         if (!el || !p) continue;
-        el.style.left = `${p.left}%`;
-        el.style.top = `${p.top}%`;
-        el.style.fontSize = `${p.size}px`;
+        const x = (p.left / 100) * w;
+        const y = (p.top / 100) * h;
+        el.style.transform = `translate3d(${x}px, ${y}px, 0) translateY(-50%)`;
+        const sizePx = Math.round(p.size * 2) / 2;
+        if (el.dataset.s !== String(sizePx)) {
+          el.dataset.s = String(sizePx);
+          el.style.fontSize = `${sizePx}px`;
+        }
         el.style.opacity = String(p.opacity);
         el.style.zIndex = String(p.zIndex);
         el.style.setProperty("--word-glow", String(0.35 + p.glow * 0.7));
@@ -330,10 +363,10 @@ export function WordSphere({ imagines }: { imagines: string[] }) {
         const el = dustEls[i];
         const p = projDust[i];
         if (!el || !p) continue;
-        el.style.left = `${p.left}%`;
-        el.style.top = `${p.top}%`;
-        el.style.width = `${p.size}px`;
-        el.style.height = `${p.size}px`;
+        const x = (p.left / 100) * w;
+        const y = (p.top / 100) * h;
+        const scale = Math.max(0.4, p.size / 2);
+        el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%) scale(${scale})`;
         el.style.opacity = String(p.opacity);
         el.style.zIndex = String(p.zIndex);
       }
@@ -357,8 +390,14 @@ export function WordSphere({ imagines }: { imagines: string[] }) {
       raf = requestAnimationFrame(tick);
     };
 
-    raf = requestAnimationFrame(tick);
+    kickRef.current = () => {
+      if (raf) return;
+      last = performance.now();
+      raf = requestAnimationFrame(tick);
+    };
+    if (runningRef.current) kickRef.current();
     return () => {
+      kickRef.current = null;
       cancelAnimationFrame(raf);
       root.removeEventListener("pointerdown", onDown);
       root.removeEventListener("pointermove", onMove);
